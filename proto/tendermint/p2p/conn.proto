@@ -27,4 +27,11 @@ message Packet {
 message AuthSigMessage {
   tendermint.crypto.PublicKey pub_key = 1 [(gogoproto.nullable) = false];
   bytes                       sig     = 2;
+  string                      nni     = 3;
+}
+
+message GatewayMasqueradeReq {
+  AuthSigMessage              rem_sig        = 2;
+  bytes                       masq_challenge = 3;
+  string                      nni            = 4;
 }
