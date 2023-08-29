@@ -621,6 +621,9 @@ type P2PConfig struct { //nolint: maligned
 	// FUzz connection
 	TestFuzz       bool            `mapstructure:"test_fuzz"`
 	TestFuzzConfig *FuzzConnConfig `mapstructure:"test_fuzz_config"`
+
+	// Trusted gateway peer IDs
+	TrustedGateways []string `mapstructure:"trusted_gateways"`
 }
 
 // DefaultP2PConfig returns a default configuration for the peer-to-peer layer

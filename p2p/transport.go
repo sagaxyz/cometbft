@@ -133,6 +133,15 @@ func MultiplexTransportMaxIncomingConnections(n int) MultiplexTransportOption {
 	return func(mt *MultiplexTransport) { mt.maxIncomingConnections = n }
 }
 
+// MultiplexTransportTrustedGateways sets trusted gateway IDs.
+func MultiplexTransportTrustedGateways(
+	ids ...ID,
+) MultiplexTransportOption {
+	return func(mt *MultiplexTransport) {
+		mt.trustedGateways = newPeerIDSet(ids)
+	}
+}
+
 // MultiplexTransport accepts and dials tcp connections and upgrades them to
 // multiplexed peers.
 type MultiplexTransport struct {
@@ -158,6 +167,8 @@ type MultiplexTransport struct {
 	// peer currently. All relevant configuration should be refactored into options
 	// with sane defaults.
 	mConfig conn.MConnConfig
+
+	trustedGateways *peerIDSet
 }
 
 // Test multiplexTransport for interface completeness.
@@ -402,6 +413,28 @@ func (mt *MultiplexTransport) filterConn(c net.Conn) (err error) {
 	return nil
 }
 
+type peerIDSet struct {
+	m map[ID]struct{}
+}
+
+func newPeerIDSet(peers []ID) *peerIDSet {
+	m := make(map[ID]struct{}, len(peers))
+	for _, p := range peers {
+		m[p] = struct{}{}
+	}
+	return &peerIDSet{
+		m: m,
+	}
+}
+func (p *peerIDSet) Contains(peer ID) bool {
+	if p == nil {
+		return false
+	}
+
+	_, ok := p.m[peer]
+	return ok
+}
+
 func (mt *MultiplexTransport) upgrade(
 	c net.Conn,
 	dialedAddr *NetAddress,
@@ -444,8 +477,7 @@ func (mt *MultiplexTransport) upgrade(
 		}
 
 		// 2. Extend masquerade if trusted gateway connection.
-		var demoTrustedGatewayPeerID ID = "7d65b74d081ca1632e7dd8167d2310fb8c44e4f9"
-		if connID == demoTrustedGatewayPeerID {
+		if mt.trustedGateways.Contains(connID) {
 			secretConn, err = masqueradeSecretConn(
 				secretConn,
 				mt.handshakeTimeout,

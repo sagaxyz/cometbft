@@ -560,6 +560,15 @@ func createTransport(
 	max := config.P2P.MaxNumInboundPeers + len(splitAndTrimEmpty(config.P2P.UnconditionalPeerIDs, ",", " "))
 	p2p.MultiplexTransportMaxIncomingConnections(max)(transport)
 
+	if len(config.P2P.TrustedGateways) > 0 {
+		ids := make([]p2p.ID, len(config.P2P.TrustedGateways))
+		for _, gw := range config.P2P.TrustedGateways {
+			id := p2p.ID(gw)
+			ids = append(ids, id)
+		}
+		p2p.MultiplexTransportTrustedGateways(ids...)(transport)
+	}
+
 	return transport, peerFilters
 }
 
