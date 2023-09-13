@@ -412,7 +412,8 @@ func (mt *MultiplexTransport) upgrade(
 		}
 	}()
 
-	secretConn, err = upgradeSecretConn(c, mt.handshakeTimeout, mt.nodeKey.PrivKey)
+	nni := mt.nodeInfo.(DefaultNodeInfo).Network
+	secretConn, err = upgradeSecretConnWithNni(c, mt.handshakeTimeout, mt.nodeKey.PrivKey, nni)
 	if err != nil {
 		return nil, nil, ErrRejected{
 			conn:          c,
@@ -421,8 +422,50 @@ func (mt *MultiplexTransport) upgrade(
 		}
 	}
 
-	// For outgoing conns, ensure connection key matches dialed key.
 	connID := PubKeyToID(secretConn.RemotePubKey())
+	remNni := secretConn.Nni()
+	if remNni != "" {
+		//
+		// Masquerading Gateway Extension
+		//
+
+		// 1. Check network name indicator equality.
+		if remNni != nni {
+			return nil, nil, ErrRejected{
+				conn: c,
+				id:   connID,
+				err: fmt.Errorf(
+					"nni (%v) remote nni (%v) mismatch",
+					nni,
+					remNni,
+				),
+				isAuthFailure: true,
+			}
+		}
+
+		// 2. Extend masquerade if trusted gateway connection.
+		var demoTrustedGatewayPeerID ID = "7d65b74d081ca1632e7dd8167d2310fb8c44e4f9"
+		if connID == demoTrustedGatewayPeerID {
+			secretConn, err = masqueradeSecretConn(
+				secretConn,
+				mt.handshakeTimeout,
+				mt.nodeKey.PrivKey,
+				nni,
+			)
+			if err != nil {
+				return nil, nil, ErrRejected{
+					conn:          c,
+					err:           fmt.Errorf("gateway masquerade failed: %v", err),
+					isAuthFailure: true,
+				}
+			}
+		}
+
+		// 3. Reset connection id to trusted gateway's remote peer.
+		connID = PubKeyToID(secretConn.RemotePubKey())
+	}
+
+	// For outgoing conns, ensure connection key matches dialed key.
 	if dialedAddr != nil {
 		if dialedID := dialedAddr.ID; connID != dialedID {
 			return nil, nil, ErrRejected{
@@ -579,13 +622,40 @@ func upgradeSecretConn(
 	timeout time.Duration,
 	privKey crypto.PrivKey,
 ) (*conn.SecretConnection, error) {
+	return upgradeSecretConnWithNni(c, timeout, privKey, "")
+}
+
+func upgradeSecretConnWithNni(
+	c net.Conn,
+	timeout time.Duration,
+	privKey crypto.PrivKey,
+	nni string,
+) (*conn.SecretConnection, error) {
 	if err := c.SetDeadline(time.Now().Add(timeout)); err != nil {
 		return nil, err
 	}
 
-	sc, err := conn.MakeSecretConnection(c, privKey)
+	sc, err := conn.MakeSecretConnectionWithNni(c, privKey, nni)
 	if err != nil {
 		return nil, err
+	}
+
+	return sc, sc.SetDeadline(time.Time{})
+}
+
+func masqueradeSecretConn(
+	sc *conn.SecretConnection,
+	timeout time.Duration,
+	privKey crypto.PrivKey,
+	nni string,
+) (*conn.SecretConnection, error) {
+	if err := sc.SetDeadline(time.Now().Add(timeout)); err != nil {
+		return sc, err
+	}
+
+	sc, err := conn.MasqueradeSecretConnection(sc, privKey, nni)
+	if err != nil {
+		return sc, err
 	}
 
 	return sc, sc.SetDeadline(time.Time{})
