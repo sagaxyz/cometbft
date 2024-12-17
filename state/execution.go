@@ -232,6 +232,7 @@ func (blockExec *BlockExecutor) applyBlock(state State, blockID types.BlockID, b
 		Misbehavior:        block.Evidence.Evidence.ToABCI(),
 		Txs:                block.Txs.ToSliceOfBytes(),
 	})
+	blockExec.logger.Info("After FinalizeBlock", "abciResponse", abciResponse)
 	endTime := time.Now().UnixNano()
 	blockExec.metrics.BlockProcessingTime.Observe(float64(endTime-startTime) / 1000000)
 	if err != nil {
